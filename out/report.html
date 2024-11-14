@@ -1,0 +1,576 @@
+<!DOCTYPE html>
+        <html>
+        <head>
+            <meta charset="UTF-8">
+            <title>Clickhouse vs&period; Doris&#x6027;&#x80fd;&#x6d4b;&#x8bd5;&#x62a5;&#x544a;</title>
+            <style>
+/* From extension vscode.github */
+/*---------------------------------------------------------------------------------------------
+ *  Copyright (c) Microsoft Corporation. All rights reserved.
+ *  Licensed under the MIT License. See License.txt in the project root for license information.
+ *--------------------------------------------------------------------------------------------*/
+
+.vscode-dark img[src$=\#gh-light-mode-only],
+.vscode-light img[src$=\#gh-dark-mode-only],
+.vscode-high-contrast:not(.vscode-high-contrast-light) img[src$=\#gh-light-mode-only],
+.vscode-high-contrast-light img[src$=\#gh-dark-mode-only] {
+	display: none;
+}
+
+</style>
+            
+        <link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/Microsoft/vscode/extensions/markdown-language-features/media/markdown.css">
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/Microsoft/vscode/extensions/markdown-language-features/media/highlight.css">
+<style>
+            body {
+                font-family: -apple-system, BlinkMacSystemFont, 'Segoe WPC', 'Segoe UI', system-ui, 'Ubuntu', 'Droid Sans', sans-serif;
+                font-size: 14px;
+                line-height: 1.6;
+            }
+        </style>
+        <style>
+.task-list-item {
+    list-style-type: none;
+}
+
+.task-list-item-checkbox {
+    margin-left: -20px;
+    vertical-align: middle;
+    pointer-events: none;
+}
+</style>
+<style>
+:root {
+  --color-note: #0969da;
+  --color-tip: #1a7f37;
+  --color-warning: #9a6700;
+  --color-severe: #bc4c00;
+  --color-caution: #d1242f;
+  --color-important: #8250df;
+}
+
+</style>
+<style>
+@media (prefers-color-scheme: dark) {
+  :root {
+    --color-note: #2f81f7;
+    --color-tip: #3fb950;
+    --color-warning: #d29922;
+    --color-severe: #db6d28;
+    --color-caution: #f85149;
+    --color-important: #a371f7;
+  }
+}
+
+</style>
+<style>
+.markdown-alert {
+  padding: 0.5rem 1rem;
+  margin-bottom: 16px;
+  color: inherit;
+  border-left: .25em solid #888;
+}
+
+.markdown-alert>:first-child {
+  margin-top: 0
+}
+
+.markdown-alert>:last-child {
+  margin-bottom: 0
+}
+
+.markdown-alert .markdown-alert-title {
+  display: flex;
+  font-weight: 500;
+  align-items: center;
+  line-height: 1
+}
+
+.markdown-alert .markdown-alert-title .octicon {
+  margin-right: 0.5rem;
+  display: inline-block;
+  overflow: visible !important;
+  vertical-align: text-bottom;
+  fill: currentColor;
+}
+
+.markdown-alert.markdown-alert-note {
+  border-left-color: var(--color-note);
+}
+
+.markdown-alert.markdown-alert-note .markdown-alert-title {
+  color: var(--color-note);
+}
+
+.markdown-alert.markdown-alert-important {
+  border-left-color: var(--color-important);
+}
+
+.markdown-alert.markdown-alert-important .markdown-alert-title {
+  color: var(--color-important);
+}
+
+.markdown-alert.markdown-alert-warning {
+  border-left-color: var(--color-warning);
+}
+
+.markdown-alert.markdown-alert-warning .markdown-alert-title {
+  color: var(--color-warning);
+}
+
+.markdown-alert.markdown-alert-tip {
+  border-left-color: var(--color-tip);
+}
+
+.markdown-alert.markdown-alert-tip .markdown-alert-title {
+  color: var(--color-tip);
+}
+
+.markdown-alert.markdown-alert-caution {
+  border-left-color: var(--color-caution);
+}
+
+.markdown-alert.markdown-alert-caution .markdown-alert-title {
+  color: var(--color-caution);
+}
+
+</style>
+        
+        </head>
+        <body class="vscode-body vscode-light">
+            <h1 id="clickhouse-vs-doris性能测试报告">Clickhouse vs. Doris性能测试报告</h1>
+<h2 id="环境准备">环境准备</h2>
+<h3 id="clickhouse">clickhouse</h3>
+<table>
+<thead>
+<tr>
+<th>节点</th>
+<th>分片编号</th>
+<th>副本编号</th>
+<th>CPU核数</th>
+<th>内存</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>ck-0-0</td>
+<td>1</td>
+<td>1</td>
+<td>6</td>
+<td>8</td>
+</tr>
+<tr>
+<td>ck-1-0</td>
+<td>2</td>
+<td>1</td>
+<td>6</td>
+<td>8</td>
+</tr>
+</tbody>
+</table>
+<h3 id="doris集群">Doris集群</h3>
+<table>
+<thead>
+<tr>
+<th>节点</th>
+<th>角色</th>
+<th>CPU核数</th>
+<th>内存</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>fe-0</td>
+<td>FE</td>
+<td>4</td>
+<td>12</td>
+</tr>
+<tr>
+<td>be-0</td>
+<td>BE</td>
+<td>8</td>
+<td>16</td>
+</tr>
+</tbody>
+</table>
+<h2 id="写入性能测试">写入性能测试</h2>
+<p>由于写入性能与表结构，索引设置等密切相关， 本测试以实际的<code>opentelemetry collector</code>向后端写入的表结构及配置为基准</p>
+<h3 id="clickhouse-1">clickhouse</h3>
+<h4 id="创建log表cluster">创建log表(cluster)</h4>
+<pre><code class="language-sql"><span class="hljs-keyword">CREATE</span> <span class="hljs-keyword">TABLE</span> default.otel_logs <span class="hljs-keyword">ON</span> CLUSTER mycluster (
+    `<span class="hljs-type">Timestamp</span>` DateTime64(<span class="hljs-number">9</span>) CODEC(Delta(<span class="hljs-number">8</span>), ZSTD(<span class="hljs-number">1</span>)),
+    `TimestampTime` DateTime <span class="hljs-keyword">DEFAULT</span> toDateTime(<span class="hljs-type">Timestamp</span>),
+    `TraceId` String CODEC(ZSTD(<span class="hljs-number">1</span>)),
+    ...
+    ...
+    ...
+
+
+<span class="hljs-keyword">CREATE</span> <span class="hljs-keyword">TABLE</span> default.otel_logs_distributed <span class="hljs-keyword">ON</span> CLUSTER mycluster
+<span class="hljs-keyword">AS</span> default.otel_logs
+ENGINE <span class="hljs-operator">=</span> Distributed(
+    mycluster,             
+    <span class="hljs-keyword">default</span>,                
+    otel_logs,              
+    cityHash64(Body)     
+);
+</code></pre>
+<p>由于是需要测试clickhouse集群模式的性能， 因此要创建集群类型的本地表（<code>otel_logs</code>），同时创建相应的分布式表（<code>otel_logs_distributed</code>）, 后续的读写操作均基于分布式表进行， 由clickhouse自动对请求分发到不同节点执行。</p>
+<h4 id="性能测试">性能测试</h4>
+<p>为了模拟多并发，采用多进程的方式编写python脚本， 构造一些log数据，插入到<code>otel_logs_distributed</code>表中。 在集群配置固定的情况下， 写入性能可能受以下2个写入参数的影响：</p>
+<ol>
+<li>并发数</li>
+<li>每次写入操作的数据条数(以下称<code>batch size</code>)</li>
+</ol>
+<p>我们采用固定变量法分别测试两个参数对写入速度的影响，写入数据的总条数为<code>100w</code>条,先测试并发数的影响, 结果如下：</p>
+<table>
+<thead>
+<tr>
+<th>并发数</th>
+<th>batch size</th>
+<th>time(s)</th>
+<th>rows/s</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>1</td>
+<td>1000</td>
+<td>51.19</td>
+<td>19534</td>
+</tr>
+<tr>
+<td>2</td>
+<td>1000</td>
+<td>22.29</td>
+<td>44869</td>
+</tr>
+<tr>
+<td>5</td>
+<td>1000</td>
+<td>16.32</td>
+<td>152204</td>
+</tr>
+<tr>
+<td>10</td>
+<td>1000</td>
+<td>3.11</td>
+<td>321517</td>
+</tr>
+</tbody>
+</table>
+<p>接下来测试<code>batch size</code>对写入性能的影响， 结果如下：</p>
+<table>
+<thead>
+<tr>
+<th>并发数</th>
+<th>batch size</th>
+<th>time(s)</th>
+<th>rows/s</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>1</td>
+<td>1000</td>
+<td>51.19</td>
+<td>19534</td>
+</tr>
+<tr>
+<td>1</td>
+<td>2000</td>
+<td>34.57</td>
+<td>28924</td>
+</tr>
+<tr>
+<td>1</td>
+<td>5000</td>
+<td>26.06</td>
+<td>38373</td>
+</tr>
+<tr>
+<td>1</td>
+<td>10000</td>
+<td>22.61</td>
+<td>44227</td>
+</tr>
+</tbody>
+</table>
+<p><strong>结论 1</strong>：在<code>batch size</code>固定的情况下， clickhouse的写入性能可随并发数量线性提升。</p>
+<p><strong>结论 2</strong>：在并发数固定的情况下， clickhouse的写入性能随<code>batch size</code>的提升有所提高， 但不能线性提升。</p>
+<h3 id="doris">Doris</h3>
+<h4 id="创建log表">创建log表</h4>
+<pre><code class="language-sql"><span class="hljs-keyword">CREATE</span> <span class="hljs-keyword">TABLE</span> IF <span class="hljs-keyword">NOT</span> <span class="hljs-keyword">EXISTS</span> otel_logs
+(
+    service_name          <span class="hljs-type">VARCHAR</span>(<span class="hljs-number">200</span>),
+    <span class="hljs-type">timestamp</span>             DATETIME(<span class="hljs-number">6</span>),
+    trace_id              <span class="hljs-type">VARCHAR</span>(<span class="hljs-number">200</span>),
+    span_id               STRING,
+    severity_number       <span class="hljs-type">INT</span>,
+    severity_text         STRING,
+    body                  STRING,
+    resource_attributes   JSON,
+    log_attributes        JSON,
+    scope_name            STRING,
+    scope_version         STRING,
+    INDEX idx_service_name(service_name) <span class="hljs-keyword">USING</span> INVERTED,
+    INDEX idx_timestamp(<span class="hljs-type">timestamp</span>) <span class="hljs-keyword">USING</span> INVERTED,
+    INDEX idx_trace_id(trace_id) <span class="hljs-keyword">USING</span> INVERTED,
+    INDEX idx_span_id(span_id) <span class="hljs-keyword">USING</span> INVERTED,
+    INDEX idx_severity_number(severity_number) <span class="hljs-keyword">USING</span> INVERTED,
+    INDEX idx_body(body) <span class="hljs-keyword">USING</span> INVERTED PROPERTIES(&quot;parser&quot;<span class="hljs-operator">=</span>&quot;unicode&quot;, &quot;support_phrase&quot;<span class="hljs-operator">=</span>&quot;true&quot;),
+    INDEX idx_severity_text(severity_text) <span class="hljs-keyword">USING</span> INVERTED,
+    INDEX idx_scope_name(scope_name) <span class="hljs-keyword">USING</span> INVERTED,
+    INDEX idx_scope_version(scope_version) <span class="hljs-keyword">USING</span> INVERTED
+)
+ENGINE <span class="hljs-operator">=</span> OLAP
+DUPLICATE KEY(service_name, <span class="hljs-type">timestamp</span>)
+<span class="hljs-keyword">PARTITION</span> <span class="hljs-keyword">BY</span> <span class="hljs-keyword">RANGE</span>(<span class="hljs-type">timestamp</span>) (
+    <span class="hljs-keyword">PARTITION</span> p2024 <span class="hljs-keyword">VALUES</span> LESS THAN (&quot;2025-01-01&quot;)
+)
+DISTRIBUTED <span class="hljs-keyword">BY</span> HASH(trace_id) BUCKETS <span class="hljs-number">1</span>
+PROPERTIES (
+    &quot;replication_num&quot; <span class="hljs-operator">=</span> &quot;1&quot;
+);
+</code></pre>
+<p>与clickhouse一样， 采用单副本的模式创建表，并在<code>body</code>等多个字段上创建了倒排索引， 以测试全文搜索的性能。</p>
+<h4 id="性能测试-1">性能测试</h4>
+<p>与clickhouse类型，使用python的多进程编程，利用多核进行并发写入， 同样采用控制变量法观察并发数与<code>batch size</code>对写入性能的影响。 测试写入数据总量也是<code>100w</code>条。</p>
+<h2 id="并发数测试结果">并发数测试结果</h2>
+<p>首先观察<code>batch size</code>固定的情况下， 并发数对写入性能的影响：</p>
+<table>
+<thead>
+<tr>
+<th>并发数</th>
+<th>batch size</th>
+<th>time(s)</th>
+<th>rows/s</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>1</td>
+<td>1000</td>
+<td>557.89</td>
+<td>1792</td>
+</tr>
+<tr>
+<td>5</td>
+<td>1000</td>
+<td>147.62</td>
+<td>6774</td>
+</tr>
+<tr>
+<td>10</td>
+<td>1000</td>
+<td>78.72</td>
+<td>12703</td>
+</tr>
+</tbody>
+</table>
+<p>再观察在并发数相同的情况下， <code>batch size</code>对写入性能的影响：</p>
+<table>
+<thead>
+<tr>
+<th>并发数</th>
+<th>batch size</th>
+<th>time(s)</th>
+<th>rows/s</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>10</td>
+<td>1000</td>
+<td>78.72</td>
+<td>12703</td>
+</tr>
+<tr>
+<td>10</td>
+<td>2000</td>
+<td>49.86</td>
+<td>20054</td>
+</tr>
+<tr>
+<td>10</td>
+<td>5000</td>
+<td>48.98</td>
+<td>20416</td>
+</tr>
+<tr>
+<td>10</td>
+<td>10000</td>
+<td>55.41</td>
+<td>18047</td>
+</tr>
+</tbody>
+</table>
+<p><strong>结论 1</strong>: 增大并发数可线性提高写入性能.</p>
+<p><strong>结论 2</strong>：在<code>batch size &lt; 2000</code>范围内增大batch size可较大提高写入性能，再增大<code>batch size</code>对写入性能提高有限。</p>
+<h2 id="查询性能测试">查询性能测试</h2>
+<p>Star Schema Benchmark(SSB) 是一个轻量级的数仓场景下的性能测试集。SSB 基于 TPC-H 提供了一个简化版的星型模型数据集，主要用于测试在星型模型下，多表关联查询的性能表现。另外，业界内通常也会将 SSB 打平为宽表模型（以下简称：SSB flat），来测试查询引擎的性能.</p>
+<p>测试数据集的规模在600,000,000条左右。</p>
+<h3 id="clickhouse-vs-doris-测试结果">Clickhouse vs. Doris 测试结果</h3>
+<table>
+<thead>
+<tr>
+<th>查询类型</th>
+<th>Query</th>
+<th>ClickHouse (s)</th>
+<th>Doris (s)</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>基本过滤查询和聚合操作（Q1 类查询）</td>
+<td>q1.1</td>
+<td>0.103</td>
+<td>0.36</td>
+</tr>
+<tr>
+<td></td>
+<td>q1.2</td>
+<td>0.045</td>
+<td>0.09</td>
+</tr>
+<tr>
+<td></td>
+<td>q1.3</td>
+<td>0.041</td>
+<td>0.24</td>
+</tr>
+<tr>
+<td>维度过滤和多表 JOIN（Q2 类查询）</td>
+<td>q2.1</td>
+<td>0.142</td>
+<td>2.5</td>
+</tr>
+<tr>
+<td></td>
+<td>q2.2</td>
+<td>0.141</td>
+<td>1.11</td>
+</tr>
+<tr>
+<td></td>
+<td>q2.3</td>
+<td>0.17</td>
+<td>1.02</td>
+</tr>
+<tr>
+<td>分组、排序和复杂聚合（Q3 类查询）</td>
+<td>q3.1</td>
+<td>0.183</td>
+<td>2.0</td>
+</tr>
+<tr>
+<td></td>
+<td>q3.2</td>
+<td>0.175</td>
+<td>1.51</td>
+</tr>
+<tr>
+<td></td>
+<td>q3.3</td>
+<td>0.111</td>
+<td>0.74</td>
+</tr>
+<tr>
+<td></td>
+<td>q3.4</td>
+<td>0.053</td>
+<td>0.08</td>
+</tr>
+<tr>
+<td>窄范围查询（Q4 类查询）</td>
+<td>q4.1</td>
+<td>0.252</td>
+<td>2.29</td>
+</tr>
+<tr>
+<td></td>
+<td>q4.2</td>
+<td>0.103</td>
+<td>0.57</td>
+</tr>
+<tr>
+<td></td>
+<td>q4.3</td>
+<td>0.082</td>
+<td>0.31</td>
+</tr>
+</tbody>
+</table>
+<h3 id="全文搜素性能对比">全文搜素性能对比</h3>
+<p>在向clickhouse和Doris插入构造数据时， 以<code>0.0001</code>的概率插入了带有关键词<code>Thoughtworks</code>的日志数据，以此查询来比较两者的全文搜索性能, 全文搜索的数据总量在20,000,000条左右, 其中约万分之一的数据符合查询条件：</p>
+<h4 id="clickhouse-2">Clickhouse</h4>
+<pre><code class="language-sql"><span class="hljs-keyword">SELECT</span> <span class="hljs-built_in">count</span>(<span class="hljs-operator">*</span>)
+<span class="hljs-keyword">FROM</span> otel_logs_distributed
+
+Query id: <span class="hljs-number">77e9</span>d426<span class="hljs-number">-77</span>da<span class="hljs-number">-457</span>a<span class="hljs-operator">-</span>abbf<span class="hljs-number">-4485217</span>c4691
+
+   ┌──<span class="hljs-built_in">count</span>()─┐
+<span class="hljs-number">1.</span> │ <span class="hljs-number">23911959</span> │ <span class="hljs-comment">-- 23.91 million</span>
+   └──────────┘
+
+<span class="hljs-number">1</span> <span class="hljs-type">row</span> <span class="hljs-keyword">in</span> set. Elapsed: <span class="hljs-number">0.011</span> sec.
+
+<span class="hljs-keyword">SELECT</span> <span class="hljs-operator">*</span>
+<span class="hljs-keyword">FROM</span> default.otel_logs_distributed
+<span class="hljs-keyword">WHERE</span> Body <span class="hljs-keyword">LIKE</span> <span class="hljs-string">&#x27;%ThoughtWorks%&#x27;</span>;
+
+↖ Progress: <span class="hljs-number">21.89</span> million <span class="hljs-keyword">rows</span>, <span class="hljs-number">2.93</span> GB (<span class="hljs-number">29.77</span> million <span class="hljs-keyword">rows</span><span class="hljs-operator">/</span>s., <span class="hljs-number">3.98</span> GB<span class="hljs-operator">/</span>s.↑ Progress: <span class="hljs-number">24.39</span> million <span class="hljs-keyword">rows</span>, <span class="hljs-number">3.25</span> GB (<span class="hljs-number">31.36</span> million <span class="hljs-keyword">rows</span><span class="hljs-operator">/</span>s., <span class="hljs-number">4.18</span> GB<span class="hljs-operator">/</span>s.↗ Progress: <span class="hljs-number">24.39</span> million <span class="hljs-keyword">rows</span>, <span class="hljs-number">3.25</span> GB (<span class="hljs-number">31.36</span> million <span class="hljs-keyword">rows</span><span class="hljs-operator">/</span>s., <span class="hljs-number">4.18</span> GB<span class="hljs-operator">/</span>s.
+
+<span class="hljs-number">2375</span> <span class="hljs-keyword">rows</span> <span class="hljs-keyword">in</span> set. Elapsed: <span class="hljs-number">0.778</span> sec. Processed <span class="hljs-number">24.39</span> million <span class="hljs-keyword">rows</span>, <span class="hljs-number">3.25</span> GB (<span class="hljs-number">31.35</span> million <span class="hljs-keyword">rows</span><span class="hljs-operator">/</span>s., <span class="hljs-number">4.18</span> GB<span class="hljs-operator">/</span>s.)
+Peak memory usage: <span class="hljs-number">24.95</span> MiB.
+</code></pre>
+<p>整理上述测试数据：</p>
+<table>
+<thead>
+<tr>
+<th>数据总量</th>
+<th>耗时(s)</th>
+<th>扫描速度(rows/s)</th>
+<th>内存峰值</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>23.91 million</td>
+<td>0.778</td>
+<td>31.35 million</td>
+<td>24.95M</td>
+</tr>
+</tbody>
+</table>
+<h4 id="doris-1">Doris</h4>
+<p>Doris的log表中在<code>body</code>字段上设置了倒排索引， 因此可以用<code>MATCH</code>语法进行全文搜索：</p>
+<pre><code class="language-sql"><span class="hljs-keyword">select</span> <span class="hljs-built_in">count</span>(<span class="hljs-operator">*</span>) <span class="hljs-keyword">from</span> otel_logs;
+<span class="hljs-operator">+</span><span class="hljs-comment">----------+</span>
+<span class="hljs-operator">|</span> <span class="hljs-built_in">count</span>(<span class="hljs-operator">*</span>) <span class="hljs-operator">|</span>
+<span class="hljs-operator">+</span><span class="hljs-comment">----------+</span>
+<span class="hljs-operator">|</span> <span class="hljs-number">23000000</span> <span class="hljs-operator">|</span>
+<span class="hljs-operator">+</span><span class="hljs-comment">----------+</span>
+<span class="hljs-number">1</span> <span class="hljs-type">row</span> <span class="hljs-keyword">in</span> <span class="hljs-keyword">set</span> (<span class="hljs-number">0.11</span> sec)
+
+<span class="hljs-keyword">SELECT</span> <span class="hljs-operator">*</span> <span class="hljs-keyword">FROM</span> otel_logs <span class="hljs-keyword">WHERE</span> body MATCH_ANY <span class="hljs-string">&#x27;ThoughtWorks&#x27;</span>;
+...
+...
+<span class="hljs-number">2200</span> <span class="hljs-keyword">rows</span> <span class="hljs-keyword">in</span> <span class="hljs-keyword">set</span> (<span class="hljs-number">0.10</span> sec)
+
+在与clickhouse数据量相当的情况下， doris全文查询符合条件的数据用时`<span class="hljs-number">0.1</span>s`.
+</code></pre>
+<h2 id="结果分析">结果分析</h2>
+<p>从上述测试结果来看：</p>
+<ul>
+<li>写入性能： clickhouse每秒处理数据量明显优于Doris。</li>
+<li>SSB宽表查询性能: clickhouse在4类查询上的表现都明显优于Doris。</li>
+<li>全文查询: 数据量相当的情况下， Doris的表现明显优于Clickhouse。</li>
+</ul>
+<p>从上述结果看， clickhouse在数据写入和宽表查询方面要远远优于Doris，但这不能完全说明问题，clickhouse基于单节点和集群设计都有较高的基准表现， 而本测试中Doris集群的配置仅仅达到了可运行的最低要求， Doris本身是基于大集群模式的设计， 其性能应在多FE,BE架构下才能得到充分的发挥。</p>
+<p>另外，Doris在前两项表现均不如clickhouse的情况下， 其全表查询的表现竟然反过来远超clickhouse， 这应该得益于clickhouse没有的倒排索引，由此可见，在Doris集群资源充足的场景下，其在全文搜索方面的性能应该会更加优异，非常适合用作日志引擎。</p>
+
+            
+            
+        </body>
+        </html>

@@ -1,0 +1,1 @@
+helm upgrade --install -n zk  zk bitnami/zookeeper

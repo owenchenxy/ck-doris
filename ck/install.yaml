@@ -1,0 +1,95 @@
+---
+apiVersion: "clickhouse.altinity.com/v1"
+kind: "ClickHouseInstallation"
+metadata:
+  name: "mych"
+  namespace: clickhouse
+spec:
+  configuration:
+    users:
+      default/password: password
+      default/networks/ip:
+        - 0.0.0.0/0
+    zookeeper:
+      nodes:
+        - host: zk-zookeeper-0.zk-zookeeper-headless.zk.svc.cluster.local
+          port: 2181
+    clusters:
+      - name: "mycluster"
+        secret:
+          auto: "true"
+        # Templates are specified for this cluster explicitly
+        templates:
+          podTemplate: pod-template-with-volumes
+        layout:
+          shardsCount: 2
+          replicasCount: 1
+  templates:
+    podTemplates:
+      - name: pod-template-with-volumes
+        spec:
+          containers:
+            - name: clickhouse
+              image: clickhouse/clickhouse-server:24.3
+              volumeMounts:
+                - name: data-storage-vc-template
+                  mountPath: /var/lib/clickhouse
+                - name: log-storage-vc-template
+                  mountPath: /var/log/clickhouse-server
+              resources:
+                requests:
+                  memory: 8Gi
+                  cpu: 6
+                limits:
+                  memory: 8Gi
+                  cpu: 6
+
+    volumeClaimTemplates:
+      - name: data-storage-vc-template
+        spec:
+          accessModes:
+            - ReadWriteOnce
+          resources:
+            requests:
+              storage: 10Gi
+      - name: log-storage-vc-template
+        spec:
+          accessModes:
+            - ReadWriteOnce
+          resources:
+            requests:
+              storage: 10Gi
+---
+apiVersion: v1
+kind: Service
+metadata:
+  labels:
+    clickhouse.altinity.com/Service: chi
+    clickhouse.altinity.com/app: chop
+    clickhouse.altinity.com/chi: mych
+    clickhouse.altinity.com/namespace: clickhouse
+  name: clickhouse-mych-nodeport
+  namespace: clickhouse
+spec:
+  type: NodePort  # 修改为 NodePort 类型
+  internalTrafficPolicy: Cluster
+  ipFamilies:
+  - IPv4
+  ipFamilyPolicy: SingleStack
+  ports:
+  - name: http
+    port: 8123
+    protocol: TCP
+    targetPort: http
+    nodePort: 30123  # 添加 NodePort，用于 HTTP 接口，取值范围为 30000-32767
+  - name: tcp
+    port: 9000
+    protocol: TCP
+    targetPort: tcp
+    nodePort: 30900  # 添加 NodePort，用于 TCP 接口，取值范围为 30000-32767
+  selector:
+    clickhouse.altinity.com/app: chop
+    clickhouse.altinity.com/chi: mych
+    clickhouse.altinity.com/namespace: clickhouse
+    clickhouse.altinity.com/ready: "yes"
+  sessionAffinity: None
